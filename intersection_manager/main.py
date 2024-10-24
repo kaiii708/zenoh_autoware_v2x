@@ -5,6 +5,7 @@ import time
 
 import carla
 import zenoh
+import json
 from zenoh import Sample
 
 log_level = logging.INFO
@@ -126,13 +127,13 @@ def queryable_callback(query):
     global traffic_lights
 
     # print(f">> [Queryable ] Received Query '{query.selector}'" + (f" with value: {query.value.payload}" if query.value is not None else ""))
-
-    if query.value is None:
+    if query.payload is None:
         # Get traffic light state
         state = get_state(query.selector)
-        query.reply(Sample(str(query.selector), state))
+        query.reply(str(query.selector), str(state))
+        
     else:
-        _new_state = query.value.payload.decode('utf-8')
+        _new_state = query.payload.deserialize(str)
         # set_state(query.selector, new_state)
 
 
@@ -158,16 +159,20 @@ def main(args):
         traffic_lights[i].set_state(carla.TrafficLightState.Red)
 
     # initiate logging
-    zenoh.init_logger()
+    zenoh.try_init_log_from_env()
 
-    logging.info('Opening session...')
-    session = zenoh.open(conf)
+    print("Opening session...")
+    with zenoh.open(conf) as session:
+        print("Declaring Queryable on '{}'...".format(key))
+        session.declare_queryable(key, queryable_callback, complete=complete)
 
-    logging.info("Declaring Queryable on '{}'...".format(key))
-    _queryable = session.declare_queryable(key, queryable_callback, complete)
-
-    while True:
-        time.sleep(1)
+        print("Press CTRL-C to quit...")
+        while True:
+            try:
+                time.sleep(1)
+            except Exception as err:
+                print(err, flush=True)
+                raise
 
 
 if __name__ == '__main__':

@@ -4,6 +4,7 @@ from enum import Enum
 
 import rclpy
 import zenoh
+import json
 from autoware_adapi_v1_msgs.msg import VehicleKinematics
 from autoware_auto_perception_msgs.msg import TrafficLight, TrafficSignal, TrafficSignalArray
 from autoware_auto_planning_msgs.msg import PathWithLaneId
@@ -180,15 +181,16 @@ class SignalPub(Node):
             color = (1, Shape.CIRCLE.value, Status.ON.value, confidence)
             traffic_signals = self.traffic_signals_gen(id, color)
             self.publication.publish(traffic_signals)
+            self.get_logger().info(f"Published red signal for light ID {id}")
             selector, target, color = self.query_light_status(id)
-            _replies = session.get(selector, zenoh.Queue(), target=target, value='red')
+            _replies = session.get(selector, target=target, payload='red')
 
     def publish_pose(self):
         global pos_x, pos_y, pos_z, pos_lane_id
 
         pose = {'lane_id': pos_lane_id, 'position': {'x': pos_x, 'y': pos_y, 'z': pos_z}}
 
-        self.pose_publisher.put(pose)
+        self.pose_publisher.put(json.dumps(pose))
 
     def pose_callback(self, data):
         global pos_x, pos_y, pos_z
@@ -217,7 +219,8 @@ class SignalPub(Node):
                     selector, target, color = self.query_light_status(tl_id)
 
                     # Sync Autoware and Carla's traffic light signal
-                    tl_color = (color_dict[color], Shape.CIRCLE.value, Status.ON.value, confidence)
+                    tl_color = (color_dict.get(color,1), Shape.CIRCLE.value, Status.ON.value, confidence)
+
                     traffic_signals = self.traffic_signals_gen(tl_id, tl_color)
 
                     self.publication.publish(traffic_signals)
@@ -286,24 +289,25 @@ class SignalPub(Node):
         selector = f'intersection/{intersection_id[tl_id]}/traffic_light/' + str(tl_id) + '/state'
 
         target = {
-            'ALL': QueryTarget.ALL(),
-            'BEST_MATCHING': QueryTarget.BEST_MATCHING(),
-            'ALL_COMPLETE': QueryTarget.ALL_COMPLETE(),
+            'ALL': QueryTarget.ALL,
+            'BEST_MATCHING': QueryTarget.BEST_MATCHING,
+            'ALL_COMPLETE': QueryTarget.ALL_COMPLETE,
         }.get('BEST_MATCHING')
+        payload = None
+        replies = session.get(selector, target=target, payload=None)
+        
 
-        replies = session.get(selector, zenoh.Queue(), target=target, value=None)
-
-        if replies:
-            for reply in replies.receiver:
-                try:
-                    payload = reply.ok.payload.decode('utf-8')
+        for reply in replies:
+                try:    
+                    # payload = json.loads(reply.ok.payload.deserialize(str))
+                    payload = reply.ok.payload.deserialize(str)
                     # print(">> Received ('{}': '{}')"
                     #     .format(reply.ok.key_expr, reply.ok.payload.decode("utf-8")))
                 except Exception as _e:
-                    payload = reply.err.payload.decode('utf-8')
+                    payload = reply.err.payload.deserialize(str)
                     # print(">> Received (ERROR: '{}')"
                     #     .format(reply.err.payload.decode("utf-8")))
-
+ 
         return selector, target, payload
 
 

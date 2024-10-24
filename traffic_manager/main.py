@@ -78,6 +78,14 @@ current_G = []
 # The number of vehicles in the intersection A, B, C, D, ...
 intersection_status = [current_A, current_B, current_C, current_D, current_E, current_F, current_G]
 
+def format_status(status):
+    formatted = []
+    for i, intersection in enumerate(status):
+        intersection_name = chr(65 + i)
+        for query in intersection:
+            vehicle_id, light, distance = query
+            formatted.append(f"Intersection {intersection_name}: Vehicle {vehicle_id} at light {light} is {distance:.2f} meters away")
+    return "\n".join(formatted)
 
 def consensus(vehicle_id, intersection_id, light, distance):
     global intersection_status, traffic_lights
@@ -114,11 +122,12 @@ def consensus(vehicle_id, intersection_id, light, distance):
     # Append new traffic light query
     if flag == 0:
         intersection_status[idx].append([vehicle_id, light, distance])
+    logging.info(format_status(intersection_status))
 
     # Sorting every queries by vehicle_id
     for current_x in intersection_status:
         current_x.sort()
-        logging.info(current_x)
+        # logging.info(current_x)
         try:
             for query in current_x:
                 # Apply one query that distance below 20
@@ -175,7 +184,7 @@ def main(args):
         logging.info('[traffic manager] Get Carla traffic lights')
 
     # initiate logging
-    zenoh.init_logger()
+    zenoh.try_init_log_from_env()
 
     print('Opening session...')
     session = zenoh.open(conf)
@@ -185,20 +194,17 @@ def main(args):
     logging.info('Connection Successed')
 
     def listener(sample: Sample):
-        payload = json.loads(sample.payload.decode('utf-8'))
-
+        payload = json.loads(sample.payload.deserialize(str))
         lane_id = int(payload['lane_id'])
         position = payload['position']
         pos_x = float(position['x'])
         pos_y = float(position['y'])
         pos_z = float(position['z'])
-
         vehicle_id = str(sample.key_expr).split('/')[1]
 
         traffic_management(vehicle_id, lane_id, pos_x, pos_y, pos_z)
 
-    _sub = session.declare_subscriber(key, listener, reliability=Reliability.RELIABLE())
-
+    session.declare_subscriber(key, listener, reliability=Reliability.RELIABLE)
     while True:
         time.sleep(1)
 
