@@ -1,16 +1,16 @@
 #!/usr/bin/env python
+import json
 from argparse import ArgumentParser
 from enum import Enum
 
 import rclpy
 import zenoh
-import json
 from autoware_adapi_v1_msgs.msg import VehicleKinematics
-from autoware_perception_msgs.msg import TrafficLightGroupArray, TrafficLightGroup, TrafficLightElement
-from tier4_planning_msgs.msg import PathWithLaneId
+from autoware_perception_msgs.msg import TrafficLightElement, TrafficLightGroup, TrafficLightGroupArray
 from rclpy.node import Node
 from rclpy.qos import QoSProfile
-from zenoh import QueryTarget, Reliability, Config
+from tier4_planning_msgs.msg import PathWithLaneId
+from zenoh import Config, QueryTarget, Reliability
 
 """
 ref link : https://github.com/tier4/autoware_auto_msgs/blob/tier4/main/autoware_auto_perception_msgs/msg/TrafficLight.idl
@@ -166,7 +166,7 @@ class SignalPub(Node):
             depth=1,
         ))
 
-        self.pose_publisher = session.declare_publisher(f'vehicle/{args.vehicle}/pose', reliability=Reliability.RELIABLE)
+        self.pose_publisher = session.declare_publisher(f'vehicle/pose/{args.vehicle}', reliability=Reliability.RELIABLE)
         self.publish_red_signal()
 
 
@@ -211,7 +211,6 @@ class SignalPub(Node):
 
                      # Sync Autoware and Carla's traffic light signal
                     selector, target, color = self.query_light_status(tl_id)
-                    
                     self.publish_traffic_light_to_autoware(tl_id, color_dict.get(color,1))
                    
                     self.publish_pose()
